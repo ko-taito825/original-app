@@ -2,65 +2,75 @@
 import React, { useEffect, useState } from "react";
 import "./globals.css";
 import MyCalendar from "./_components/calendar/MyCalendar";
+import WorkoutInProgressBanner from "./routines/_components/WorkoutInProgressBanner";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useUser } from "./_hooks/useUser";
+import { useFetch } from "./_hooks/useFetch";
+import { useSupabaseSession } from "./_hooks/useSupabaseSession";
+
 export default function page() {
-  const [activeDraft, setActiveDraft] = useState<{
-    id: string;
-    title: string;
-  } | null>(null);
-  const handleDelete = () => {
-    if (!activeDraft) return;
-    if (confirm("現在の下書き破棄しますか？")) {
-      localStorage.removeItem(`workout_draft_${activeDraft.id}`);
-      setActiveDraft(null);
-    }
-  };
+  const router = useRouter();
+  const token = useSupabaseSession();
+  const { userId, isLoading: isUserLoading } = useUser();
+  const searchParams = useSearchParams();
+  const [haseSeenTutorial, setHasSeenTutorial] = useState(false);
+  const isSkipped = searchParams.get("skipped") === "true";
+  const { data, isLoading: isChecking } = useFetch<{ isNewUser: boolean }>(
+    token ? "/api/check_routine" : null,
+  );
   useEffect(() => {
-    const allKeys = Object.keys(localStorage);
-    const draftKey = allKeys.find((key) => key.startsWith("workout_draft_"));
-    if (draftKey) {
-      try {
-        const saveDraft = JSON.parse(localStorage.getItem(draftKey) || "{}");
-        const id = draftKey.replace("workout_draft_", "");
-        setActiveDraft({
-          id,
-          title: saveDraft.title || "継続中のトレーニング",
-        });
-      } catch (error) {
-        console.error("下書きの読み込みに失敗しました", error);
-      }
+    const completed = localStorage.getItem("tutorial_completed") === "true";
+    if (completed) {
+      setHasSeenTutorial(true);
     }
   }, []);
-  return (
-    <div className="w-full p-4 md:max-w-2xl md:mx-auto md:px-0">
-      {activeDraft && (
-        <div className="relative mb-8 border-2 border-yellow-500 bg-yellow-500/10 p-4 sm:pr-12 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4 animate-in fade-in slide-in-from-top-4 duration-500">
-          <button
-            onClick={handleDelete}
-            className="absolute top-4 right-6 text-yellow-500/50 hover:text-yellow-500 text-xl font-bold transition-colors"
-          >
-            &times;
-          </button>
+  useEffect(() => {
+    if (isUserLoading) return;
+    if (!userId) {
+      router.push("/signin");
+      return;
+    }
+    if (isChecking) return;
+    if (data?.isNewUser && !isSkipped && !haseSeenTutorial) {
+      router.push("/tutorial");
+    }
+  }, [
+    userId,
+    isUserLoading,
+    isSkipped,
+    data,
+    isChecking,
+    router,
+    haseSeenTutorial,
+  ]);
 
-          <div className="flex items-center gap-3">
-            <div>
-              <p className="text-yellow-500 font-black text-sm uppercase tracking-wider">
-                Workout in Progress
-              </p>
-              <h3 className="text-white font-bold text-lg">
-                {activeDraft.title}
-              </h3>
-            </div>
-          </div>
-          <Link
-            href={`/routines/${activeDraft.id}?resume=true`}
-            className="w-full sm:w-auto bg-yellow-500 text-black px-6 py-2 rounded-full font-black text-center active:scale-95 transition-transform"
-          >
-            再開する
-          </Link>
-        </div>
-      )}
+  if (isUserLoading || isChecking)
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-black text-white">
+        <p className="animate-pulse font-black text-2xl">Loading now</p>
+      </div>
+    );
+  return (
+    <div className="w-full p-4 md:max-w-2xl md:mx-auto md:px-0 pb-10">
+      <WorkoutInProgressBanner />
       <MyCalendar />
+      <div className="flex flex-col items-center w-full px-4">
+        <Link
+          className="w-full max-w-[260px] bg-[#d4af37] text-black font-extrabold py-4 px-8 rounded-full shadow-[0_0_25px_rgba(212,175,55,0.4)] hover:bg-[#e5c158] active:scale-95 transition-all duration-200 uppercase tracking-widest text-lg flex items-center justify-center text-center"
+          href="/routines"
+        >
+          TRAINING START
+        </Link>
+        <Link
+          href="/tutorial"
+          className="flex items-center gap-1.5 text-zinc-500 hover:text-yellow-500 transition-all group pt-3 pb-2 mb-4"
+        >
+          <span className="text-[11px] font-bold tracking-wider">
+            使い方を確認する
+          </span>
+        </Link>
+      </div>
     </div>
   );
 }
